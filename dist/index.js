@@ -29382,6 +29382,12 @@ const core = __importStar(__nccwpck_require__(2186));
 async function getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranch) {
     let lockData = {};
     let sha = null;
+    // Check if the branch exists
+    const branchExistsResult = await branchExists(octokit, owner, repo, lockBranch);
+    if (!branchExistsResult) {
+        core.error(`Branch ${lockBranch} does not exist. Please create it manually.`);
+        throw new Error(`Branch ${lockBranch} does not exist. Please create it manually.`);
+    }
     try {
         const response = await octokit.rest.repos.getContent({
             owner,
@@ -29404,6 +29410,7 @@ async function getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranc
     }
     catch (error) {
         if (error.status === 404) {
+            // Lock file not found; create it
             core.info(`Lock file not found at ${lockFilePath} on branch ${lockBranch}. Creating new lock file.`);
             lockData = {};
             sha = null;
@@ -29425,11 +29432,6 @@ async function getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranc
                     // File was created by another process, retry
                     core.info('Lock file created by another process, retrying...');
                 }
-                else if (createError.status === 422) {
-                    // Branch does not exist
-                    core.error(`Branch ${lockBranch} does not exist. Please create it manually.`);
-                    throw createError;
-                }
                 else {
                     throw createError;
                 }
@@ -29437,12 +29439,9 @@ async function getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranc
             // After creating the lock file, retry fetching it
             return await getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranch);
         }
-        else if (error.status === 409) {
-            // Conflict detected, retry
-            core.info('Conflict detected while fetching lock file, retrying...');
-            return await getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranch);
-        }
         else {
+            // Unknown error
+            core.error(`Error fetching lock file: ${error.message}`);
             throw error;
         }
     }
@@ -29464,6 +29463,24 @@ async function updateLockData(octokit, owner, repo, lockFilePath, lockBranch, ne
     catch (error) {
         if (error.status === 409) {
             // Conflict occurred, return false to retry
+            return false;
+        }
+        else {
+            throw error;
+        }
+    }
+}
+async function branchExists(octokit, owner, repo, branch) {
+    try {
+        await octokit.rest.repos.getBranch({
+            owner,
+            repo,
+            branch,
+        });
+        return true;
+    }
+    catch (error) {
+        if (error.status === 404) {
             return false;
         }
         else {

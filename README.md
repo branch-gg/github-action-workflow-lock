@@ -2,18 +2,22 @@
 
 ## Prerequisites
 
-1. GitHub Repository: The action is intended to be used within a GitHub repository.
-2. Lock Branch: A branch in your repository (e.g., locks) where the lock file will be stored.
-3. Personal Access Token (PAT): A GitHub PAT with repo scope stored as a secret (e.g., PAT_TOKEN).
+1. GitHub Repository: The action is intended to be used within a GitHub
+   repository.
+2. Lock Branch: A branch in your repository (e.g., locks) where the lock file
+   will be stored.
+3. Personal Access Token (PAT): A GitHub PAT with repo scope stored as a secret
+   (e.g., PAT_TOKEN).
 
 ## Basic Example
 
 1. #### Ensure the Lock Branch Exists
-   
-   Create a branch named locks in your repository. This branch will store the lock file and should not trigger workflows.
+
+   Create a branch named locks in your repository. This branch will store the
+   lock file and should not trigger workflows.
 
 2. #### Configure Workflow Triggers
-   
+
    Modify your workflow triggers to ignore the locks branch:
 
 ```yaml
@@ -30,166 +34,109 @@ on:
       - 'locks'
 ```
 
-3. Use the Action in Your Workflow
-   Create or update your workflow file (e.g., .github/workflows/build.yml):
+3. Use the Action in Your Workflow Create or update your workflow file (e.g.,
+   .github/workflows/build.yml):
 
-yaml
-Copy code
-name: Build with Distributed Lock
+yaml Copy code name: Build with Distributed Lock
 
-on:
-workflow_dispatch:
-push:
-branches:
-- main
-branches-ignore:
+on: workflow_dispatch: push: branches:
+
+- main branches-ignore:
 - 'locks'
 
-jobs:
-build:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout code
-uses: actions/checkout@v3
-with:
-fetch-depth: 0
+jobs: build: runs-on: ubuntu-latest steps:
 
-      - name: Acquire Lock
-        id: acquire-lock
-        uses: your-username/distributed-lock-action@v1
-        with:
-          github-token: ${{ secrets.PAT_TOKEN }}
-          lock-file-path: 'locks/lock.json'
-          lock-branch: 'locks'
-          lock-key: 'build-lock'
-          max-concurrent: '1'
-          polling-interval: '10'
-          mode: 'acquire'
+- name: Checkout code uses: actions/checkout@v3 with: fetch-depth: 0
 
-      - name: Critical Section
-        run: |
-          echo "Executing critical section..."
+        - name: Acquire Lock
+          id: acquire-lock
+          uses: your-username/distributed-lock-action@v1
+          with:
+            github-token: ${{ secrets.PAT_TOKEN }}
+            lock-file-path: 'locks/lock.json'
+            lock-branch: 'locks'
+            lock-key: 'build-lock'
+            max-concurrent: '1'
+            polling-interval: '10'
+            mode: 'acquire'
 
-      - name: Release Lock
-        if: always()
-        uses: your-username/distributed-lock-action@v1
-        with:
-          github-token: ${{ secrets.PAT_TOKEN }}
-          lock-file-path: 'locks/lock.json'
-          lock-branch: 'locks'
-          lock-key: 'build-lock'
-          mode: 'release'
+        - name: Critical Section
+          run: |
+            echo "Executing critical section..."
 
-      - name: Downstream Job
-        run: |
-          echo "Continuing with downstream tasks..."
-Parameters
-github-token: (Required) GitHub token with repo scope. Use a PAT stored in secrets.
-lock-file-path: (Required) Path to the lock file in the repository (e.g., locks/lock.json).
-lock-branch: (Optional) Branch where the lock file is stored. Default is locks.
-lock-key: (Required) Unique key for the lock (e.g., build-lock).
-max-concurrent: (Required for acquire mode) Maximum number of concurrent workflows allowed.
-polling-interval: (Optional) Time in seconds between retries. Default is 10.
-mode: (Optional) Action mode: acquire or release. Default is acquire.
-Examples
-Using Multiple Locks
-If you have multiple resources to manage, use different lock-key values:
+        - name: Release Lock
+          if: always()
+          uses: your-username/distributed-lock-action@v1
+          with:
+            github-token: ${{ secrets.PAT_TOKEN }}
+            lock-file-path: 'locks/lock.json'
+            lock-branch: 'locks'
+            lock-key: 'build-lock'
+            mode: 'release'
 
-yaml
-Copy code
-- name: Acquire Database Lock
-  id: acquire-db-lock
-  uses: your-username/distributed-lock-action@v1
-  with:
-  github-token: ${{ secrets.PAT_TOKEN }}
-  lock-file-path: 'locks/lock.json'
-  lock-branch: 'locks'
-  lock-key: 'database-lock'
-  max-concurrent: '1'
-  polling-interval: '10'
+        - name: Downstream Job
+          run: |
+            echo "Continuing with downstream tasks..."
+
+  Parameters github-token: (Required) GitHub token with repo scope. Use a PAT
+  stored in secrets. lock-file-path: (Required) Path to the lock file in the
+  repository (e.g., locks/lock.json). lock-branch: (Optional) Branch where the
+  lock file is stored. Default is locks. lock-key: (Required) Unique key for the
+  lock (e.g., build-lock). max-concurrent: (Required for acquire mode) Maximum
+  number of concurrent workflows allowed. polling-interval: (Optional) Time in
+  seconds between retries. Default is 10. mode: (Optional) Action mode: acquire
+  or release. Default is acquire. Examples Using Multiple Locks If you have
+  multiple resources to manage, use different lock-key values:
+
+yaml Copy code
+
+- name: Acquire Database Lock id: acquire-db-lock uses:
+  your-username/distributed-lock-action@v1 with: github-token:
+  ${{ secrets.PAT_TOKEN }} lock-file-path: 'locks/lock.json' lock-branch:
+  'locks' lock-key: 'database-lock' max-concurrent: '1' polling-interval: '10'
   mode: 'acquire'
 
-- name: Release Database Lock
-  if: always()
-  uses: your-username/distributed-lock-action@v1
-  with:
-  github-token: ${{ secrets.PAT_TOKEN }}
-  lock-file-path: 'locks/lock.json'
-  lock-branch: 'locks'
-  lock-key: 'database-lock'
-  mode: 'release'
-  Adjusting Max Concurrency
+- name: Release Database Lock if: always() uses:
+  your-username/distributed-lock-action@v1 with: github-token:
+  ${{ secrets.PAT_TOKEN }} lock-file-path: 'locks/lock.json' lock-branch:
+  'locks' lock-key: 'database-lock' mode: 'release' Adjusting Max Concurrency
   Allow up to 2 concurrent workflows:
 
-yaml
-Copy code
-- name: Acquire Lock
-  uses: your-username/distributed-lock-action@v1
-  with:
-  github-token: ${{ secrets.PAT_TOKEN }}
-  lock-file-path: 'locks/lock.json'
-  lock-branch: 'locks'
-  lock-key: 'build-lock'
-  max-concurrent: '2'
-  polling-interval: '10'
-  mode: 'acquire'
-  Testing
-  Running Unit Tests
-  The action includes unit tests written with Jest.
+yaml Copy code
 
-Install Dependencies
-bash
-Copy code
-npm install
-Run Tests
-bash
-Copy code
-npm test
-Run Tests with Coverage
-bash
-Copy code
-npm run test:coverage
-Testing the Action in a Workflow
-Trigger multiple instances of the workflow to test the lock mechanism:
+- name: Acquire Lock uses: your-username/distributed-lock-action@v1 with:
+  github-token: ${{ secrets.PAT_TOKEN }} lock-file-path: 'locks/lock.json'
+  lock-branch: 'locks' lock-key: 'build-lock' max-concurrent: '2'
+  polling-interval: '10' mode: 'acquire' Testing Running Unit Tests The action
+  includes unit tests written with Jest.
 
-Simultaneous Runs: Start multiple workflow runs to observe how the lock controls concurrency.
-Monitor Lock File: Check the locks/lock.json file on the locks branch to see the lock state.
-Simulate Failures: Introduce intentional failures to test lock release in error scenarios.
-Contributing
-Contributions are welcome! Please follow these steps:
+Install Dependencies bash Copy code npm install Run Tests bash Copy code npm
+test Run Tests with Coverage bash Copy code npm run test:coverage Testing the
+Action in a Workflow Trigger multiple instances of the workflow to test the lock
+mechanism:
 
-Fork the Repository: Create a personal fork of this repository.
-Clone Your Fork: Clone your forked repository to your local machine.
-Create a Branch: Create a new branch for your changes.
-Make Changes: Implement your changes and additions.
-Run Tests: Ensure all tests pass and coverage is adequate.
-Commit Changes: Commit your changes with descriptive messages.
-Push to Fork: Push your changes to your fork on GitHub.
-Create Pull Request: Open a pull request to the main repository.
-Development Setup
-Install Dependencies
-bash
-Copy code
-npm install
-Build the Action
-bash
-Copy code
-npm run build
-npm run package
-npm run build: Compiles TypeScript to JavaScript.
-npm run package: Bundles the action using @vercel/ncc.
-Run Tests
-bash
-Copy code
-npm test
-License
-This project is licensed under the MIT License.
+Simultaneous Runs: Start multiple workflow runs to observe how the lock controls
+concurrency. Monitor Lock File: Check the locks/lock.json file on the locks
+branch to see the lock state. Simulate Failures: Introduce intentional failures
+to test lock release in error scenarios. Contributing Contributions are welcome!
+Please follow these steps:
 
-Acknowledgments
-Inspired by the need for managing concurrency in GitHub Actions.
+Fork the Repository: Create a personal fork of this repository. Clone Your Fork:
+Clone your forked repository to your local machine. Create a Branch: Create a
+new branch for your changes. Make Changes: Implement your changes and additions.
+Run Tests: Ensure all tests pass and coverage is adequate. Commit Changes:
+Commit your changes with descriptive messages. Push to Fork: Push your changes
+to your fork on GitHub. Create Pull Request: Open a pull request to the main
+repository. Development Setup Install Dependencies bash Copy code npm install
+Build the Action bash Copy code npm run build npm run package npm run build:
+Compiles TypeScript to JavaScript. npm run package: Bundles the action using
+@vercel/ncc. Run Tests bash Copy code npm test License This project is licensed
+under the MIT License.
+
+Acknowledgments Inspired by the need for managing concurrency in GitHub Actions.
 Thanks to the community for providing valuable feedback and contributions.
-Contact
-For any questions or suggestions, please open an issue or contact the repository owner.
+Contact For any questions or suggestions, please open an issue or contact the
+repository owner.
 
 # Contributing
 

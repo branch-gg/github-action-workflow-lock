@@ -6,16 +6,25 @@ export async function getOrCreateLockData(
   owner: string,
   repo: string,
   lockFilePath: string,
-  lockBranch: string
+  lockBranch: string,
 ): Promise<{ lockData: Record<string, string[]>; sha: string | null }> {
   let lockData: Record<string, string[]> = {};
   let sha: string | null = null;
 
   // Check if the branch exists
-  const branchExistsResult = await branchExists(octokit, owner, repo, lockBranch);
+  const branchExistsResult = await branchExists(
+    octokit,
+    owner,
+    repo,
+    lockBranch,
+  );
   if (!branchExistsResult) {
-    core.error(`Branch ${lockBranch} does not exist. Please create it manually.`);
-    throw new Error(`Branch ${lockBranch} does not exist. Please create it manually.`);
+    core.error(
+      `Branch ${lockBranch} does not exist. Please create it manually.`,
+    );
+    throw new Error(
+      `Branch ${lockBranch} does not exist. Please create it manually.`,
+    );
   }
 
   try {
@@ -27,7 +36,9 @@ export async function getOrCreateLockData(
     });
 
     if (!('content' in response.data)) {
-      throw new Error('Unexpected response from GitHub API: content not found.');
+      throw new Error(
+        'Unexpected response from GitHub API: content not found.',
+      );
     }
 
     const content = Buffer.from(response.data.content, 'base64').toString();
@@ -42,12 +53,16 @@ export async function getOrCreateLockData(
   } catch (error: any) {
     if (error.status === 404) {
       // Lock file not found; create it
-      core.info(`Lock file not found at ${lockFilePath} on branch ${lockBranch}. Creating new lock file.`);
+      core.info(
+        `Lock file not found at ${lockFilePath} on branch ${lockBranch}. Creating new lock file.`,
+      );
       lockData = {};
       sha = null;
 
       // Initialize lock file
-      const initialContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
+      const initialContent = Buffer.from(
+        JSON.stringify(lockData, null, 2),
+      ).toString('base64');
 
       try {
         await octokit.rest.repos.createOrUpdateFileContents({
@@ -69,7 +84,13 @@ export async function getOrCreateLockData(
       }
 
       // After creating the lock file, retry fetching it
-      return await getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranch);
+      return await getOrCreateLockData(
+        octokit,
+        owner,
+        repo,
+        lockFilePath,
+        lockBranch,
+      );
     } else {
       // Unknown error
       core.error(`Error fetching lock file: ${error.message}`);
@@ -115,7 +136,7 @@ async function branchExists(
   octokit: ReturnType<typeof getOctokit>,
   owner: string,
   repo: string,
-  branch: string
+  branch: string,
 ): Promise<boolean> {
   try {
     await octokit.rest.repos.getBranch({

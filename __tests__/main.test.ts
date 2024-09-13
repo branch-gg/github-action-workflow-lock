@@ -202,7 +202,9 @@ describe('Distributed Lock Action', () => {
 
     // Verify that the lock was acquired
     expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
-    expect(octokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledTimes(2);
+    expect(octokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledTimes(
+      2,
+    );
   });
 
   it('releases the lock successfully', async () => {
@@ -241,13 +243,12 @@ describe('Distributed Lock Action', () => {
 
   it('handles conflicts during update and retries', async () => {
     // Mock getContent to return existing lock file
-    octokit.rest.repos.getContent
-      .mockResolvedValue({
-        data: {
-          content: Buffer.from(JSON.stringify({})).toString('base64'),
-          sha: 'test-sha',
-        },
-      });
+    octokit.rest.repos.getContent.mockResolvedValue({
+      data: {
+        content: Buffer.from(JSON.stringify({})).toString('base64'),
+        sha: 'test-sha',
+      },
+    });
 
     // Mock createOrUpdateFileContents to fail with a conflict first
     octokit.rest.repos.createOrUpdateFileContents
@@ -296,11 +297,15 @@ describe('Distributed Lock Action', () => {
         maxConcurrent: 2,
         pollingInterval: 1000,
         runId,
-      })
-    ).rejects.toThrow(`Branch ${lockBranch} does not exist. Please create it manually.`);
+      }),
+    ).rejects.toThrow(
+      `Branch ${lockBranch} does not exist. Please create it manually.`,
+    );
 
     // Verify that an error was logged
-    expect(core.error).toHaveBeenCalledWith(`Branch ${lockBranch} does not exist. Please create it manually.`);
+    expect(core.error).toHaveBeenCalledWith(
+      `Branch ${lockBranch} does not exist. Please create it manually.`,
+    );
   });
 
   it('releases lock when run ID not present', async () => {
@@ -333,8 +338,12 @@ describe('Distributed Lock Action', () => {
     });
 
     // Verify that a warning was logged and no update was made
-    expect(core.warning).toHaveBeenCalledWith('Run ID not found in lock entries during release.');
-    expect(octokit.rest.repos.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(
+      'Run ID not found in lock entries during release.',
+    );
+    expect(
+      octokit.rest.repos.createOrUpdateFileContents,
+    ).not.toHaveBeenCalled();
   });
 
   it('handles lock file parsing errors', async () => {
@@ -367,7 +376,9 @@ describe('Distributed Lock Action', () => {
     });
 
     // Verify that a warning was logged about parsing
-    expect(core.warning).toHaveBeenCalledWith('Failed to parse lock file. Reinitializing.');
+    expect(core.warning).toHaveBeenCalledWith(
+      'Failed to parse lock file. Reinitializing.',
+    );
     // Verify that the lock was acquired
     expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
   });
