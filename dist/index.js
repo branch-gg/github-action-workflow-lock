@@ -29309,7 +29309,8 @@ async function run() {
         const maxConcurrent = parseInt(core.getInput('max-concurrent') || '2');
         const pollingInterval = parseInt(core.getInput('polling-interval') || '10', 10) * 1000; // Convert to milliseconds
         const octokit = (0, github_1.getOctokit)(githubToken);
-        const { owner, repo } = github_1.context.repo;
+        const owner = core.getInput('owner') || github_1.context.repo.owner;
+        const repo = core.getInput('repo') || github_1.context.repo.repo;
         const runId = `${github_1.context.workflow}:${github_1.context.runId}:${github_1.context.job}`;
         if (mode === 'acquire') {
             await (0, acquire_1.acquireLock)({
