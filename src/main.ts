@@ -10,10 +10,7 @@ export async function run(): Promise<void> {
     const lockFilePath = core.getInput('lock-file-path', { required: true });
     const lockBranch = core.getInput('lock-branch') || 'locks';
     const lockKey = core.getInput('lock-key', { required: true });
-    const maxConcurrent = parseInt(
-      core.getInput('max-concurrent'),
-      10,
-    );
+    const maxConcurrent = parseInt(core.getInput('max-concurrent') || '2');
     const pollingInterval =
       parseInt(core.getInput('polling-interval') || '10', 10) * 1000; // Convert to milliseconds
 
