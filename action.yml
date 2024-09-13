@@ -10,6 +10,12 @@ inputs:
   github-token:
     description: 'GitHub token with repo scope.'
     required: true
+  owner:
+    description: 'Owner account of the lock repo, defaults to this repo.'
+    required: false
+  repo:
+    description: 'Lock repo, defaults to this repo.'
+    required: false
   lock-file-path:
     description: 'The path to the lock file in the repository.'
     required: true

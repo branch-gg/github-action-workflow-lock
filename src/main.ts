@@ -15,7 +15,10 @@ export async function run(): Promise<void> {
       parseInt(core.getInput('polling-interval') || '10', 10) * 1000; // Convert to milliseconds
 
     const octokit = getOctokit(githubToken);
-    const { owner, repo } = context.repo;
+
+    const owner = core.getInput('owner') || context.repo.owner;
+    const repo = core.getInput('repo') || context.repo.repo;
+
     const runId = `${context.workflow}:${context.runId}:${context.job}`;
 
     if (mode === 'acquire') {
