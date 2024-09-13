@@ -11,7 +11,7 @@ export async function run(): Promise<void> {
     const lockBranch = core.getInput('lock-branch') || 'locks';
     const lockKey = core.getInput('lock-key', { required: true });
     const maxConcurrent = parseInt(
-      core.getInput('max-concurrent', { required: true }),
+      core.getInput('max-concurrent'),
       10,
     );
     const pollingInterval =
