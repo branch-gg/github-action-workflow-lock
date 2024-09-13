@@ -87,13 +87,17 @@ jobs:
 ```
 
 Parameters:
-* `github-token`: (Required) GitHub token with repo scope. Use a PAT stored in secrets.
-* `lock-file-path`: (Required) Path to the lock file in the repository (e.g., locks/lock.json).
-* `lock-branch`: (Optional) Branch where the lock file is stored. Default is locks.
-* `lock-key`: (Required) Unique key for the lock (e.g., build-lock).
-* `max-concurrent`: (Optional) Maximum number of concurrent workflows allowed.
-* `polling-interval`: (Optional) Time in seconds between retries. Default is 10.
-* `mode`: (Optional) Action mode: acquire or release. Default is acquire.
+
+- `github-token`: (Required) GitHub token with repo scope. Use a PAT stored in
+  secrets.
+- `lock-file-path`: (Required) Path to the lock file in the repository (e.g.,
+  locks/lock.json).
+- `lock-branch`: (Optional) Branch where the lock file is stored. Default is
+  locks.
+- `lock-key`: (Required) Unique key for the lock (e.g., build-lock).
+- `max-concurrent`: (Optional) Maximum number of concurrent workflows allowed.
+- `polling-interval`: (Optional) Time in seconds between retries. Default is 10.
+- `mode`: (Optional) Action mode: acquire or release. Default is acquire.
 
 # Contributing
 
