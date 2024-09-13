@@ -1,89 +1,374 @@
-/**
- * Unit tests for the action's main functionality, src/main.ts
- *
- * These should be run as if the action was called from a workflow.
- * Specifically, the inputs listed in `action.yml` should be set as environment
- * variables following the pattern `INPUT_<INPUT_NAME>`.
- */
+// tests/index.test.ts
+import * as core from '@actions/core';
+import { getOctokit } from '@actions/github';
+import { acquireLock } from '../src/acquire';
+import { releaseLock } from '../src/release';
 
-import * as core from '@actions/core'
-import * as main from '../src/main'
+jest.mock('@actions/core');
+jest.mock('@actions/github');
 
-// Mock the action's main function
-const runMock = jest.spyOn(main, 'run')
+jest.setTimeout(10000);
 
-// Other utilities
-const timeRegex = /^\d{2}:\d{2}:\d{2}/
+describe('Distributed Lock Action', () => {
+  const owner = 'test-owner';
+  const repo = 'test-repo';
+  const lockFilePath = 'locks/lock.json';
+  const lockBranch = 'locks';
+  const lockKey = 'test-lock-key';
+  const runId = 'test-workflow:12345:test-job';
 
-// Mock the GitHub Actions core library
-let debugMock: jest.SpiedFunction<typeof core.debug>
-let errorMock: jest.SpiedFunction<typeof core.error>
-let getInputMock: jest.SpiedFunction<typeof core.getInput>
-let setFailedMock: jest.SpiedFunction<typeof core.setFailed>
-let setOutputMock: jest.SpiedFunction<typeof core.setOutput>
+  let octokit: any;
 
-describe('action', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.clearAllMocks();
 
-    debugMock = jest.spyOn(core, 'debug').mockImplementation()
-    errorMock = jest.spyOn(core, 'error').mockImplementation()
-    getInputMock = jest.spyOn(core, 'getInput').mockImplementation()
-    setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation()
-    setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation()
-  })
+    // Mock Octokit methods
+    octokit = {
+      rest: {
+        repos: {
+          getContent: jest.fn(),
+          createOrUpdateFileContents: jest.fn(),
+          getBranch: jest.fn(),
+        },
+      },
+    };
 
-  it('sets the time output', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return '500'
-        default:
-          return ''
+    (getOctokit as jest.Mock).mockReturnValue(octokit);
+
+    // Mock core methods to prevent actual logging
+    (core.info as jest.Mock).mockImplementation(console.log);
+    (core.warning as jest.Mock).mockImplementation(console.warn);
+    (core.error as jest.Mock).mockImplementation(console.error);
+    (core.setFailed as jest.Mock).mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('acquires the lock successfully when lock is available', async () => {
+    // Mock getContent to return existing lock file with empty lock data
+    octokit.rest.repos.getContent.mockResolvedValue({
+      data: {
+        content: Buffer.from(JSON.stringify({})).toString('base64'),
+        sha: 'test-sha',
+      },
+    });
+
+    // Mock createOrUpdateFileContents to succeed
+    octokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({
+      data: {
+        content: {},
+        commit: { sha: 'new-sha' },
+      },
+    });
+
+    await acquireLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      maxConcurrent: 2,
+      pollingInterval: 1000,
+      runId,
+    });
+
+    // Verify that the lock was acquired
+    expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
+    expect(octokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalled();
+  });
+
+  it('waits when max concurrency is reached', async () => {
+    // Initial lock data with max concurrency reached
+    const lockData = { [lockKey]: ['run1', 'run2'] };
+
+    // Mock getBranch to indicate the branch exists
+    octokit.rest.repos.getBranch.mockResolvedValue({
+      data: {
+        name: lockBranch,
+        commit: {
+          sha: 'branch-sha',
+        },
+      },
+    });
+
+    // Mock getContent to return the current lock data on each call
+    octokit.rest.repos.getContent.mockImplementation(() => {
+      return Promise.resolve({
+        data: {
+          content: Buffer.from(JSON.stringify(lockData)).toString('base64'),
+          sha: 'test-sha',
+        },
+      });
+    });
+
+    // Create a variable to control the availability of the lock
+    let lockReleased = false;
+
+    // Modify the lock data to simulate a slot becoming available after 2 seconds
+    setTimeout(() => {
+      lockData[lockKey].pop(); // Remove one entry to simulate a free slot
+      lockReleased = true;
+    }, 2000);
+
+    // Mock createOrUpdateFileContents to succeed when the slot is available
+    octokit.rest.repos.createOrUpdateFileContents.mockImplementation(() => {
+      if (lockReleased) {
+        return Promise.resolve({
+          data: {
+            content: {},
+            commit: { sha: 'new-sha' },
+          },
+        });
+      } else {
+        // Simulate a conflict to make the action retry
+        return Promise.reject({
+          status: 409,
+          message: 'Conflict',
+        });
       }
-    })
+    });
 
-    await main.run()
-    expect(runMock).toHaveReturned()
+    await acquireLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      maxConcurrent: 2,
+      pollingInterval: 500, // Shorter interval for the test
+      runId,
+    });
 
-    // Verify that all of the core library functions were called correctly
-    expect(debugMock).toHaveBeenNthCalledWith(1, 'Waiting 500 milliseconds ...')
-    expect(debugMock).toHaveBeenNthCalledWith(
-      2,
-      expect.stringMatching(timeRegex)
-    )
-    expect(debugMock).toHaveBeenNthCalledWith(
-      3,
-      expect.stringMatching(timeRegex)
-    )
-    expect(setOutputMock).toHaveBeenNthCalledWith(
-      1,
-      'time',
-      expect.stringMatching(timeRegex)
-    )
-    expect(errorMock).not.toHaveBeenCalled()
-  })
+    // Verify that the lock was eventually acquired
+    expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
+  });
 
-  it('sets a failed status', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return 'this is not a number'
-        default:
-          return ''
-      }
-    })
+  it('creates the lock file if it does not exist', async () => {
+    // Mock getBranch to return that the branch exists
+    octokit.rest.repos.getBranch.mockResolvedValueOnce({
+      data: {
+        name: lockBranch,
+        commit: {
+          sha: 'branch-sha',
+        },
+      },
+    });
 
-    await main.run()
-    expect(runMock).toHaveReturned()
+    // Mock getContent to return 404 (file not found)
+    octokit.rest.repos.getContent
+      .mockRejectedValueOnce({
+        status: 404,
+        message: 'Not Found',
+      })
+      // After creating the lock file, mock getContent to return the new lock file
+      .mockResolvedValueOnce({
+        data: {
+          content: Buffer.from(JSON.stringify({})).toString('base64'),
+          sha: 'initial-sha',
+        },
+      });
 
-    // Verify that all of the core library functions were called correctly
-    expect(setFailedMock).toHaveBeenNthCalledWith(
-      1,
-      'milliseconds not a number'
-    )
-    expect(errorMock).not.toHaveBeenCalled()
-  })
-})
+    // Mock createOrUpdateFileContents to create the lock file
+    octokit.rest.repos.createOrUpdateFileContents
+      .mockResolvedValueOnce({
+        data: {
+          content: {},
+          commit: { sha: 'initial-sha' },
+        },
+      })
+      // Mock createOrUpdateFileContents to succeed in acquiring the lock
+      .mockResolvedValueOnce({
+        data: {
+          content: {},
+          commit: { sha: 'new-sha' },
+        },
+      });
+
+    await acquireLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      maxConcurrent: 2,
+      pollingInterval: 1000,
+      runId,
+    });
+
+    // Verify that the lock was acquired
+    expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
+    expect(octokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the lock successfully', async () => {
+    // Mock getContent to return lock data with the run ID
+    const lockData = { [lockKey]: [runId] };
+
+    octokit.rest.repos.getContent.mockResolvedValue({
+      data: {
+        content: Buffer.from(JSON.stringify(lockData)).toString('base64'),
+        sha: 'test-sha',
+      },
+    });
+
+    // Mock createOrUpdateFileContents to succeed
+    octokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({
+      data: {
+        content: {},
+        commit: { sha: 'new-sha' },
+      },
+    });
+
+    await releaseLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      runId,
+    });
+
+    // Verify that the lock was released
+    expect(core.info).toHaveBeenCalledWith(`Lock released by ${runId}`);
+    expect(octokit.rest.repos.createOrUpdateFileContents).toHaveBeenCalled();
+  });
+
+  it('handles conflicts during update and retries', async () => {
+    // Mock getContent to return existing lock file
+    octokit.rest.repos.getContent
+      .mockResolvedValue({
+        data: {
+          content: Buffer.from(JSON.stringify({})).toString('base64'),
+          sha: 'test-sha',
+        },
+      });
+
+    // Mock createOrUpdateFileContents to fail with a conflict first
+    octokit.rest.repos.createOrUpdateFileContents
+      .mockRejectedValueOnce({
+        status: 409,
+        message: 'Conflict',
+      })
+      .mockResolvedValueOnce({
+        data: {
+          content: {},
+          commit: { sha: 'new-sha' },
+        },
+      });
+
+    await acquireLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      maxConcurrent: 2,
+      pollingInterval: 500,
+      runId,
+    });
+
+    // Verify that the lock was eventually acquired after retry
+    expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
+  });
+
+  it('fails when the lock branch does not exist', async () => {
+    // Mock getBranch to return 404 (branch not found)
+    octokit.rest.repos.getBranch.mockRejectedValueOnce({
+      status: 404,
+      message: 'Branch not found',
+    });
+
+    await expect(
+      acquireLock({
+        octokit,
+        owner,
+        repo,
+        lockFilePath,
+        lockBranch,
+        lockKey,
+        maxConcurrent: 2,
+        pollingInterval: 1000,
+        runId,
+      })
+    ).rejects.toThrow(`Branch ${lockBranch} does not exist. Please create it manually.`);
+
+    // Verify that an error was logged
+    expect(core.error).toHaveBeenCalledWith(`Branch ${lockBranch} does not exist. Please create it manually.`);
+  });
+
+  it('releases lock when run ID not present', async () => {
+    // Mock getContent to return lock data without the run ID
+    const lockData = { [lockKey]: ['some-other-run'] };
+
+    octokit.rest.repos.getContent.mockResolvedValue({
+      data: {
+        content: Buffer.from(JSON.stringify(lockData)).toString('base64'),
+        sha: 'test-sha',
+      },
+    });
+
+    // Since run ID is not present, createOrUpdateFileContents should not be called
+    octokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({
+      data: {
+        content: {},
+        commit: { sha: 'new-sha' },
+      },
+    });
+
+    await releaseLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      runId,
+    });
+
+    // Verify that a warning was logged and no update was made
+    expect(core.warning).toHaveBeenCalledWith('Run ID not found in lock entries during release.');
+    expect(octokit.rest.repos.createOrUpdateFileContents).not.toHaveBeenCalled();
+  });
+
+  it('handles lock file parsing errors', async () => {
+    // Mock getContent to return invalid JSON content
+    octokit.rest.repos.getContent.mockResolvedValue({
+      data: {
+        content: Buffer.from('Invalid JSON').toString('base64'),
+        sha: 'test-sha',
+      },
+    });
+
+    // Mock createOrUpdateFileContents to succeed
+    octokit.rest.repos.createOrUpdateFileContents.mockResolvedValue({
+      data: {
+        content: {},
+        commit: { sha: 'new-sha' },
+      },
+    });
+
+    await acquireLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      maxConcurrent: 2,
+      pollingInterval: 1000,
+      runId,
+    });
+
+    // Verify that a warning was logged about parsing
+    expect(core.warning).toHaveBeenCalledWith('Failed to parse lock file. Reinitializing.');
+    // Verify that the lock was acquired
+    expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
+  });
+});

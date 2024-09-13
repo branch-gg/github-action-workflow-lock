@@ -4,10 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    branches-ignore:
+      - lock
   push:
     branches:
       - main
-
+    branches-ignore:
+      - lock
 permissions:
   contents: read
 
@@ -57,8 +60,24 @@ jobs:
         id: test-action
         uses: ./
         with:
-          milliseconds: 2000
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          lock-file-path: '__tests__/lock/lock.json'
+          lock-branch: 'lock'
+          lock-key: 'test-lock'
+          max-concurrent: '1'
+          polling-interval: '10'
+          mode: 'acquire'
 
-      - name: Print Output
-        id: output
-        run: echo "${{ steps.test-action.outputs.time }}"
+      - name: Critical Section
+        run: |
+          echo "Executing critical section..."
+
+      - name: Release Lock
+        if: always()
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          lock-file-path: '__tests__/lock/lock.json'
+          lock-branch: 'lock'
+          lock-key: 'test-lock'
+          mode: 'release'

@@ -1,35 +1,197 @@
-# Create a GitHub Action Using TypeScript
+# Usage
 
-[![GitHub Super-Linter](https://github.com/actions/typescript-action/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml/badge.svg)](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml)
-[![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
+## Prerequisites
 
-Use this template to bootstrap the creation of a TypeScript action. :rocket:
+1. GitHub Repository: The action is intended to be used within a GitHub repository.
+2. Lock Branch: A branch in your repository (e.g., locks) where the lock file will be stored.
+3. Personal Access Token (PAT): A GitHub PAT with repo scope stored as a secret (e.g., PAT_TOKEN).
 
-This template includes compilation support, tests, a validation workflow,
-publishing, and versioning guidance.
+## Basic Example
 
-If you are new, there's also a simpler introduction in the
-[Hello world JavaScript action repository](https://github.com/actions/hello-world-javascript-action).
+1. #### Ensure the Lock Branch Exists
+   
+   Create a branch named locks in your repository. This branch will store the lock file and should not trigger workflows.
 
-## Create Your Own Action
+2. #### Configure Workflow Triggers
+   
+   Modify your workflow triggers to ignore the locks branch:
 
-To create your own action, you can use this repository as a template! Just
-follow the below instructions:
+```yaml
+on:
+  push:
+    branches:
+      - main
+    branches-ignore:
+      - 'locks'
+  pull_request:
+    branches:
+      - main
+    branches-ignore:
+      - 'locks'
+```
 
-1. Click the **Use this template** button at the top of the repository
-1. Select **Create a new repository**
-1. Select an owner and name for your new repository
-1. Click **Create repository**
-1. Clone your new repository
+3. Use the Action in Your Workflow
+   Create or update your workflow file (e.g., .github/workflows/build.yml):
 
-> [!IMPORTANT]
->
-> Make sure to remove or update the [`CODEOWNERS`](./CODEOWNERS) file! For
-> details on how to use this file, see
-> [About code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
+yaml
+Copy code
+name: Build with Distributed Lock
+
+on:
+workflow_dispatch:
+push:
+branches:
+- main
+branches-ignore:
+- 'locks'
+
+jobs:
+build:
+runs-on: ubuntu-latest
+steps:
+- name: Checkout code
+uses: actions/checkout@v3
+with:
+fetch-depth: 0
+
+      - name: Acquire Lock
+        id: acquire-lock
+        uses: your-username/distributed-lock-action@v1
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+          lock-file-path: 'locks/lock.json'
+          lock-branch: 'locks'
+          lock-key: 'build-lock'
+          max-concurrent: '1'
+          polling-interval: '10'
+          mode: 'acquire'
+
+      - name: Critical Section
+        run: |
+          echo "Executing critical section..."
+
+      - name: Release Lock
+        if: always()
+        uses: your-username/distributed-lock-action@v1
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+          lock-file-path: 'locks/lock.json'
+          lock-branch: 'locks'
+          lock-key: 'build-lock'
+          mode: 'release'
+
+      - name: Downstream Job
+        run: |
+          echo "Continuing with downstream tasks..."
+Parameters
+github-token: (Required) GitHub token with repo scope. Use a PAT stored in secrets.
+lock-file-path: (Required) Path to the lock file in the repository (e.g., locks/lock.json).
+lock-branch: (Optional) Branch where the lock file is stored. Default is locks.
+lock-key: (Required) Unique key for the lock (e.g., build-lock).
+max-concurrent: (Required for acquire mode) Maximum number of concurrent workflows allowed.
+polling-interval: (Optional) Time in seconds between retries. Default is 10.
+mode: (Optional) Action mode: acquire or release. Default is acquire.
+Examples
+Using Multiple Locks
+If you have multiple resources to manage, use different lock-key values:
+
+yaml
+Copy code
+- name: Acquire Database Lock
+  id: acquire-db-lock
+  uses: your-username/distributed-lock-action@v1
+  with:
+  github-token: ${{ secrets.PAT_TOKEN }}
+  lock-file-path: 'locks/lock.json'
+  lock-branch: 'locks'
+  lock-key: 'database-lock'
+  max-concurrent: '1'
+  polling-interval: '10'
+  mode: 'acquire'
+
+- name: Release Database Lock
+  if: always()
+  uses: your-username/distributed-lock-action@v1
+  with:
+  github-token: ${{ secrets.PAT_TOKEN }}
+  lock-file-path: 'locks/lock.json'
+  lock-branch: 'locks'
+  lock-key: 'database-lock'
+  mode: 'release'
+  Adjusting Max Concurrency
+  Allow up to 2 concurrent workflows:
+
+yaml
+Copy code
+- name: Acquire Lock
+  uses: your-username/distributed-lock-action@v1
+  with:
+  github-token: ${{ secrets.PAT_TOKEN }}
+  lock-file-path: 'locks/lock.json'
+  lock-branch: 'locks'
+  lock-key: 'build-lock'
+  max-concurrent: '2'
+  polling-interval: '10'
+  mode: 'acquire'
+  Testing
+  Running Unit Tests
+  The action includes unit tests written with Jest.
+
+Install Dependencies
+bash
+Copy code
+npm install
+Run Tests
+bash
+Copy code
+npm test
+Run Tests with Coverage
+bash
+Copy code
+npm run test:coverage
+Testing the Action in a Workflow
+Trigger multiple instances of the workflow to test the lock mechanism:
+
+Simultaneous Runs: Start multiple workflow runs to observe how the lock controls concurrency.
+Monitor Lock File: Check the locks/lock.json file on the locks branch to see the lock state.
+Simulate Failures: Introduce intentional failures to test lock release in error scenarios.
+Contributing
+Contributions are welcome! Please follow these steps:
+
+Fork the Repository: Create a personal fork of this repository.
+Clone Your Fork: Clone your forked repository to your local machine.
+Create a Branch: Create a new branch for your changes.
+Make Changes: Implement your changes and additions.
+Run Tests: Ensure all tests pass and coverage is adequate.
+Commit Changes: Commit your changes with descriptive messages.
+Push to Fork: Push your changes to your fork on GitHub.
+Create Pull Request: Open a pull request to the main repository.
+Development Setup
+Install Dependencies
+bash
+Copy code
+npm install
+Build the Action
+bash
+Copy code
+npm run build
+npm run package
+npm run build: Compiles TypeScript to JavaScript.
+npm run package: Bundles the action using @vercel/ncc.
+Run Tests
+bash
+Copy code
+npm test
+License
+This project is licensed under the MIT License.
+
+Acknowledgments
+Inspired by the need for managing concurrency in GitHub Actions.
+Thanks to the community for providing valuable feedback and contributions.
+Contact
+For any questions or suggestions, please open an issue or contact the repository owner.
+
+# Contributing
 
 ## Initial Setup
 
@@ -65,23 +227,12 @@ need to perform some initial setup steps before you can develop your action.
    $ npm test
 
    PASS  ./index.test.js
-     ✓ throws invalid number (3ms)
-     ✓ wait 500 ms (504ms)
-     ✓ test runs (95ms)
+     ✓ ... (nms)
 
    ...
    ```
 
-## Update the Action Metadata
-
-The [`action.yml`](action.yml) file defines metadata about your action, such as
-input(s) and output(s). For details about this file, see
-[Metadata syntax for GitHub Actions](https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions).
-
-When you copy this repository, update `action.yml` with the name, description,
-inputs, and outputs for your action.
-
-## Update the Action Code
+## Releasing the Action Code
 
 The [`src/`](./src/) directory is the heart of your action! This contains the
 source code that will be run when your action is invoked. You can replace the
@@ -93,22 +244,20 @@ There are a few things to keep in mind when writing your action code:
   In `main.ts`, you will see that the action is run in an `async` function.
 
   ```javascript
-  import * as core from '@actions/core'
+  import * as core from '@actions/core';
   //...
 
   async function run() {
     try {
       //...
     } catch (error) {
-      core.setFailed(error.message)
+      core.setFailed(error.message);
     }
   }
   ```
 
   For more information about the GitHub Actions toolkit, see the
   [documentation](https://github.com/actions/toolkit/blob/master/README.md).
-
-So, what are you waiting for? Go ahead and start customizing your action!
 
 1. Create a new branch
 

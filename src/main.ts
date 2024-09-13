@@ -1,26 +1,52 @@
-import * as core from '@actions/core'
-import { wait } from './wait'
+import * as core from '@actions/core';
+import { context, getOctokit } from '@actions/github';
+import { acquireLock } from './acquire';
+import { releaseLock } from './release';
 
-/**
- * The main function for the action.
- * @returns {Promise<void>} Resolves when the action is complete.
- */
 export async function run(): Promise<void> {
   try {
-    const ms: string = core.getInput('milliseconds')
+    const mode = core.getInput('mode') || 'acquire';
+    const githubToken = core.getInput('github-token', { required: true });
+    const lockFilePath = core.getInput('lock-file-path', { required: true });
+    const lockBranch = core.getInput('lock-branch') || 'locks';
+    const lockKey = core.getInput('lock-key', { required: true });
+    const maxConcurrent = parseInt(
+      core.getInput('max-concurrent', { required: true }),
+      10,
+    );
+    const pollingInterval =
+      parseInt(core.getInput('polling-interval') || '10', 10) * 1000; // Convert to milliseconds
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+    const octokit = getOctokit(githubToken);
+    const { owner, repo } = context.repo;
+    const runId = `${context.workflow}:${context.runId}:${context.job}`;
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
-
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
-  } catch (error) {
-    // Fail the workflow run if an error occurs
-    if (error instanceof Error) core.setFailed(error.message)
+    if (mode === 'acquire') {
+      await acquireLock({
+        octokit,
+        owner,
+        repo,
+        lockFilePath,
+        lockBranch,
+        lockKey,
+        maxConcurrent,
+        pollingInterval,
+        runId,
+      });
+    } else if (mode === 'release') {
+      await releaseLock({
+        octokit,
+        owner,
+        repo,
+        lockFilePath,
+        lockBranch,
+        lockKey,
+        runId,
+      });
+    } else {
+      core.setFailed(`Invalid mode: ${mode}. Use 'acquire' or 'release'.`);
+    }
+  } catch (error: any) {
+    core.setFailed(error.message);
   }
 }

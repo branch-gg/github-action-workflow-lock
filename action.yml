@@ -1,23 +1,36 @@
-name: 'The name of your action here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: 'Workflow Distributed Lock Action'
+description: 'A GitHub Action to implement a distributed lock across workflows.'
+author: 'Connor Hollasch'
 
-# Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
-  icon: 'heart'
-  color: 'red'
+  icon: 'lock'
+  color: 'purple'
 
-# Define your inputs here.
 inputs:
-  milliseconds:
-    description: 'Your input description here'
+  github-token:
+    description: 'GitHub token with repo scope.'
     required: true
-    default: '1000'
-
-# Define your outputs here.
-outputs:
-  time:
-    description: 'Your output description here'
+  lock-file-path:
+    description: 'The path to the lock file in the repository.'
+    required: true
+  lock-branch:
+    description: 'The branch where the lock file is stored.'
+    required: false
+    default: 'locks'
+  lock-key:
+    description: 'The key for the lock.'
+    required: true
+  max-concurrent:
+    description: 'The maximum number of concurrent entries allowed.'
+    required: false
+  polling-interval:
+    description: 'Time in seconds between retries.'
+    required: false
+    default: '10'
+  mode:
+    description: 'Action mode: acquire or release.'
+    required: false
+    default: 'acquire'
 
 runs:
   using: node20

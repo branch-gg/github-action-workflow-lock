@@ -4,9 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    branches-ignore:
+      - lock
   push:
     branches:
       - main
+    branches-ignore:
+      - lock
   schedule:
     - cron: '31 7 * * 3'
 
