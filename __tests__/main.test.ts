@@ -382,4 +382,56 @@ describe('Distributed Lock Action', () => {
     // Verify that the lock was acquired
     expect(core.info).toHaveBeenCalledWith(`Lock acquired by ${runId}`);
   });
+
+  it('retries on conflict during release and eventually releases the lock', async () => {
+    // Mock getBranch to indicate the branch exists
+    octokit.rest.repos.getBranch.mockResolvedValue({
+      data: {
+        name: lockBranch,
+        commit: {
+          sha: 'branch-sha',
+        },
+      },
+    });
+
+    // Initial lock data with the run ID
+    const lockData = { [lockKey]: [runId] };
+
+    // Mock getContent to return the current lock data on each call
+    octokit.rest.repos.getContent.mockImplementation(() => {
+      return Promise.resolve({
+        data: {
+          content: Buffer.from(JSON.stringify(lockData)).toString('base64'),
+          sha: 'test-sha',
+        },
+      });
+    });
+
+    // Mock createOrUpdateFileContents to simulate conflict on first attempt, then succeed
+    octokit.rest.repos.createOrUpdateFileContents
+      .mockRejectedValueOnce({
+        status: 409,
+        message: 'Conflict',
+      })
+      .mockResolvedValueOnce({
+        data: {
+          content: {},
+          commit: { sha: 'new-sha' },
+        },
+      });
+
+    await releaseLock({
+      octokit,
+      owner,
+      repo,
+      lockFilePath,
+      lockBranch,
+      lockKey,
+      pollingInterval: 100, // Short polling interval for the test
+      runId,
+    });
+
+    // Verify that the lock was eventually released
+    expect(core.info).toHaveBeenCalledWith(`Lock released by ${runId}`);
+  });
 });
