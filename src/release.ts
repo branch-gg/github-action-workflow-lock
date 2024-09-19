@@ -3,13 +3,28 @@ import { getOrCreateLockData, updateLockData } from './meta';
 import { ActionParams } from './types';
 
 export async function releaseLock(params: ActionParams): Promise<void> {
-  const { octokit, owner, repo, lockFilePath, lockBranch, lockKey, runId, pollingInterval } = params;
+  const {
+    octokit,
+    owner,
+    repo,
+    lockFilePath,
+    lockBranch,
+    lockKey,
+    runId,
+    pollingInterval,
+  } = params;
 
   let released = false;
   while (!released) {
     try {
       // Fetch lock file content
-      const { lockData, sha } = await getOrCreateLockData(octokit, owner, repo, lockFilePath, lockBranch);
+      const { lockData, sha } = await getOrCreateLockData(
+        octokit,
+        owner,
+        repo,
+        lockFilePath,
+        lockBranch,
+      );
 
       if (!lockData[lockKey]) {
         core.warning('Lock key not found during release.');
@@ -23,7 +38,9 @@ export async function releaseLock(params: ActionParams): Promise<void> {
         currentEntries.splice(index, 1);
         if (currentEntries.length === 0) delete lockData[lockKey];
 
-        const newContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
+        const newContent = Buffer.from(
+          JSON.stringify(lockData, null, 2),
+        ).toString('base64');
 
         const updated = await updateLockData(
           octokit,
@@ -33,7 +50,7 @@ export async function releaseLock(params: ActionParams): Promise<void> {
           lockBranch,
           newContent,
           sha,
-          `Release lock by ${runId}`
+          `Release lock by ${runId}`,
         );
 
         if (updated) {
@@ -41,7 +58,9 @@ export async function releaseLock(params: ActionParams): Promise<void> {
           released = true; // Exit the loop
         } else {
           core.info('Conflict detected during release, retrying...');
-          await new Promise((resolve) => setTimeout(resolve, pollingInterval || 10000));
+          await new Promise(resolve =>
+            setTimeout(resolve, pollingInterval || 10000),
+          );
         }
       } else {
         core.warning('Run ID not found in lock entries during release.');

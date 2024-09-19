@@ -29309,8 +29309,8 @@ async function run() {
         const maxConcurrent = parseInt(core.getInput('max-concurrent') || '2');
         const pollingInterval = parseInt(core.getInput('polling-interval') || '10', 10) * 1000; // Convert to milliseconds
         const octokit = (0, github_1.getOctokit)(githubToken);
-        const owner = core.getInput('owner') || github_1.context.repo.owner;
-        const repo = core.getInput('repo') || github_1.context.repo.repo;
+        const owner = core.getInput('owner', { required: false }) || github_1.context.repo.owner;
+        const repo = core.getInput('repo', { required: false }) || github_1.context.repo.repo;
         const runId = `${github_1.context.workflow}:${github_1.context.runId}:${github_1.context.job}`;
         if (mode === 'acquire') {
             await (0, acquire_1.acquireLock)({
@@ -29526,35 +29526,43 @@ exports.releaseLock = releaseLock;
 const core = __importStar(__nccwpck_require__(2186));
 const meta_1 = __nccwpck_require__(4377);
 async function releaseLock(params) {
-    const { octokit, owner, repo, lockFilePath, lockBranch, lockKey, runId } = params;
-    try {
-        const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
-        if (!lockData[lockKey]) {
-            core.warning('Lock key not found during release.');
-            return;
-        }
-        const currentEntries = lockData[lockKey];
-        const index = currentEntries.indexOf(runId);
-        if (index !== -1) {
-            currentEntries.splice(index, 1);
-            if (currentEntries.length === 0)
-                delete lockData[lockKey];
-            const newContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
-            const updated = await (0, meta_1.updateLockData)(octokit, owner, repo, lockFilePath, lockBranch, newContent, sha, `Release lock by ${runId}`);
-            if (updated) {
-                core.info(`Lock released by ${runId}`);
+    const { octokit, owner, repo, lockFilePath, lockBranch, lockKey, runId, pollingInterval, } = params;
+    let released = false;
+    while (!released) {
+        try {
+            // Fetch lock file content
+            const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
+            if (!lockData[lockKey]) {
+                core.warning('Lock key not found during release.');
+                released = true; // Exit the loop
+                break;
+            }
+            const currentEntries = lockData[lockKey];
+            const index = currentEntries.indexOf(runId);
+            if (index !== -1) {
+                currentEntries.splice(index, 1);
+                if (currentEntries.length === 0)
+                    delete lockData[lockKey];
+                const newContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
+                const updated = await (0, meta_1.updateLockData)(octokit, owner, repo, lockFilePath, lockBranch, newContent, sha, `Release lock by ${runId}`);
+                if (updated) {
+                    core.info(`Lock released by ${runId}`);
+                    released = true; // Exit the loop
+                }
+                else {
+                    core.info('Conflict detected during release, retrying...');
+                    await new Promise(resolve => setTimeout(resolve, pollingInterval || 10000));
+                }
             }
             else {
-                core.warning('Failed to update lock file during release.');
+                core.warning('Run ID not found in lock entries during release.');
+                released = true; // Exit the loop
             }
         }
-        else {
-            core.warning('Run ID not found in lock entries during release.');
+        catch (error) {
+            core.error(`Error during lock release: ${error.message}`);
+            throw error;
         }
-    }
-    catch (error) {
-        core.error(`Error during lock release: ${error.message}`);
-        throw error;
     }
 }
 
