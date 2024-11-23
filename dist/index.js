@@ -29528,7 +29528,9 @@ const meta_1 = __nccwpck_require__(4377);
 async function releaseLock(params) {
     const { octokit, owner, repo, lockFilePath, lockBranch, lockKey, runId, pollingInterval, } = params;
     let released = false;
+    let retries = 0;
     while (!released) {
+        ++retries;
         try {
             // Fetch lock file content
             const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
@@ -29561,7 +29563,11 @@ async function releaseLock(params) {
         }
         catch (error) {
             core.error(`Error during lock release: ${error.message}`);
-            throw error;
+            core.error(error);
+            // Only throw if we've tried 3 times
+            if (retries > 3) {
+                throw error;
+            }
         }
     }
 }
