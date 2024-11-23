@@ -15,7 +15,9 @@ export async function releaseLock(params: ActionParams): Promise<void> {
   } = params;
 
   let released = false;
+  let retries = 0;
   while (!released) {
+    ++retries;
     try {
       // Fetch lock file content
       const { lockData, sha } = await getOrCreateLockData(
@@ -68,7 +70,12 @@ export async function releaseLock(params: ActionParams): Promise<void> {
       }
     } catch (error: any) {
       core.error(`Error during lock release: ${error.message}`);
-      throw error;
+      core.error(error);
+
+      // Only throw if we've tried 3 times
+      if (retries > 3) {
+        throw error;
+      }
     }
   }
 }
