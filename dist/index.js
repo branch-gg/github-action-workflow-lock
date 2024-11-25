@@ -29220,16 +29220,23 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.acquireLock = acquireLock;
 const core = __importStar(__nccwpck_require__(2186));
 const meta_1 = __nccwpck_require__(4377);
+const retry_1 = __importDefault(__nccwpck_require__(1043));
 async function acquireLock(params) {
     const { octokit, owner, repo, lockFilePath, lockBranch, lockKey, maxConcurrent, pollingInterval, runId, } = params;
     let acquired = false;
     while (!acquired) {
         try {
-            const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
+            const { lockData, sha } = await (0, retry_1.default)(async () => {
+                const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
+                return { lockData, sha };
+            });
             if (!lockData[lockKey])
                 lockData[lockKey] = [];
             const currentEntries = lockData[lockKey];
@@ -29241,7 +29248,7 @@ async function acquireLock(params) {
             if (currentEntries.length < (maxConcurrent || 1)) {
                 currentEntries.push(runId);
                 const newContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
-                const updated = await (0, meta_1.updateLockData)(octokit, owner, repo, lockFilePath, lockBranch, newContent, sha, `Acquire lock by ${runId}`);
+                const updated = await (0, retry_1.default)(async () => await (0, meta_1.updateLockData)(octokit, owner, repo, lockFilePath, lockBranch, newContent, sha, `Acquire lock by ${runId}`));
                 if (updated) {
                     acquired = true;
                     core.info(`Lock acquired by ${runId}`);
@@ -29521,55 +29528,83 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.releaseLock = releaseLock;
 const core = __importStar(__nccwpck_require__(2186));
 const meta_1 = __nccwpck_require__(4377);
+const retry_1 = __importDefault(__nccwpck_require__(1043));
 async function releaseLock(params) {
     const { octokit, owner, repo, lockFilePath, lockBranch, lockKey, runId, pollingInterval, } = params;
-    let released = false;
-    let retries = 0;
-    while (!released) {
-        ++retries;
-        try {
-            // Fetch lock file content
-            const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
-            if (!lockData[lockKey]) {
-                core.warning('Lock key not found during release.');
-                released = true; // Exit the loop
-                break;
-            }
-            const currentEntries = lockData[lockKey];
-            const index = currentEntries.indexOf(runId);
-            if (index !== -1) {
-                currentEntries.splice(index, 1);
-                if (currentEntries.length === 0)
-                    delete lockData[lockKey];
-                const newContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
-                const updated = await (0, meta_1.updateLockData)(octokit, owner, repo, lockFilePath, lockBranch, newContent, sha, `Release lock by ${runId}`);
-                if (updated) {
-                    core.info(`Lock released by ${runId}`);
-                    released = true; // Exit the loop
+    await (0, retry_1.default)(async () => {
+        while (true) {
+            try {
+                // Fetch lock file content
+                const { lockData, sha } = await (0, retry_1.default)(async () => {
+                    const { lockData, sha } = await (0, meta_1.getOrCreateLockData)(octokit, owner, repo, lockFilePath, lockBranch);
+                    return { lockData, sha };
+                });
+                if (!lockData[lockKey]) {
+                    core.warning('Lock key not found during release.');
+                    return;
+                }
+                const currentEntries = lockData[lockKey];
+                const index = currentEntries.indexOf(runId);
+                if (index !== -1) {
+                    currentEntries.splice(index, 1);
+                    if (currentEntries.length === 0)
+                        delete lockData[lockKey];
+                    const newContent = Buffer.from(JSON.stringify(lockData, null, 2)).toString('base64');
+                    const updated = await (0, meta_1.updateLockData)(octokit, owner, repo, lockFilePath, lockBranch, newContent, sha, `Release lock by ${runId}`);
+                    if (updated) {
+                        core.info(`Lock released by ${runId}`);
+                        break;
+                    }
+                    else {
+                        core.info('Conflict detected during release, retrying...');
+                        await new Promise(resolve => setTimeout(resolve, pollingInterval || 10000));
+                    }
                 }
                 else {
-                    core.info('Conflict detected during release, retrying...');
-                    await new Promise(resolve => setTimeout(resolve, pollingInterval || 10000));
+                    core.warning('Run ID not found in lock entries during release.');
+                    break;
                 }
             }
-            else {
-                core.warning('Run ID not found in lock entries during release.');
-                released = true; // Exit the loop
-            }
-        }
-        catch (error) {
-            core.error(`Error during lock release: ${error.message}`);
-            core.error(error);
-            // Only throw if we've tried 3 times
-            if (retries > 3) {
+            catch (error) {
+                core.error(`Error during lock release: ${error.message}`);
+                core.error(error);
                 throw error;
             }
         }
+    });
+}
+
+
+/***/ }),
+
+/***/ 1043:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports["default"] = retry;
+async function retry(fn, retries = 5) {
+    let attempt = 0;
+    let lastError;
+    while (attempt < retries) {
+        try {
+            return await fn();
+        }
+        catch (error) {
+            lastError = error;
+            console.error(`Attempt ${attempt + 1} failed:`, error);
+            attempt++;
+        }
     }
+    throw lastError;
 }
 
 

@@ -18,6 +18,7 @@ export async function getOrCreateLockData(
     repo,
     lockBranch,
   );
+
   if (!branchExistsResult) {
     core.error(
       `Branch ${lockBranch} does not exist. Please create it manually.`,

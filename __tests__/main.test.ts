@@ -338,7 +338,7 @@ describe('Distributed Lock Action', () => {
 
   it('fails when the lock branch does not exist', async () => {
     // Mock getBranch to return 404 (branch not found)
-    octokit.rest.repos.getBranch.mockRejectedValueOnce({
+    octokit.rest.repos.getBranch.mockRejectedValue({
       status: 404,
       message: 'Branch not found',
     });
