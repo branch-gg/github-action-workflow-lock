@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import { ActionParams } from './types';
 import { getOrCreateLockData, updateLockData } from './meta';
+import retry from './retry';
 
 export async function acquireLock(params: ActionParams): Promise<void> {
   const {
@@ -18,13 +19,17 @@ export async function acquireLock(params: ActionParams): Promise<void> {
   let acquired = false;
   while (!acquired) {
     try {
-      const { lockData, sha } = await getOrCreateLockData(
-        octokit,
-        owner,
-        repo,
-        lockFilePath,
-        lockBranch,
-      );
+      const { lockData, sha } = await retry(async () => {
+        const { lockData, sha } = await getOrCreateLockData(
+          octokit,
+          owner,
+          repo,
+          lockFilePath,
+          lockBranch,
+        );
+
+        return { lockData, sha };
+      });
 
       if (!lockData[lockKey]) lockData[lockKey] = [];
       const currentEntries = lockData[lockKey];
@@ -41,16 +46,20 @@ export async function acquireLock(params: ActionParams): Promise<void> {
           JSON.stringify(lockData, null, 2),
         ).toString('base64');
 
-        const updated = await updateLockData(
-          octokit,
-          owner,
-          repo,
-          lockFilePath,
-          lockBranch,
-          newContent,
-          sha,
-          `Acquire lock by ${runId}`,
+        const updated = await retry(
+          async () =>
+            await updateLockData(
+              octokit,
+              owner,
+              repo,
+              lockFilePath,
+              lockBranch,
+              newContent,
+              sha,
+              `Acquire lock by ${runId}`,
+            ),
         );
+
         if (updated) {
           acquired = true;
           core.info(`Lock acquired by ${runId}`);
