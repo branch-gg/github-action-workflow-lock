@@ -29591,7 +29591,7 @@ async function releaseLock(params) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports["default"] = retry;
-async function retry(fn, retries = 5) {
+async function retry(fn, retries = 5, initialDelayMs = 150) {
     let attempt = 0;
     let lastError;
     while (attempt < retries) {
@@ -29600,8 +29600,13 @@ async function retry(fn, retries = 5) {
         }
         catch (error) {
             lastError = error;
-            console.error(`Attempt ${attempt + 1} failed:`, error);
+            // Calculate exponential backoff delay
+            const delay = initialDelayMs * Math.pow(2, attempt - 1);
+            console.error(`Attempt ${attempt + 1} failed, waiting ${delay}ms:`, error);
             attempt++;
+            if (attempt < retries) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
         }
     }
     throw lastError;
